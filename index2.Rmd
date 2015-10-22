@@ -1,0 +1,176 @@
+--- 
+title       : World Religions Since 1945
+subtitle    : ARDA World Relgion Dataset
+author      : edettman (dettmanej@gmail.com)
+job         : 
+framework   : io2012        # {io2012, html5slides, shower, dzslides, ...}
+highlighter : highlight.js  # {highlight.js, prettify, highlight}
+hitheme     : default      # 
+widgets     : []            # {mathjax, quiz, bootstrap}
+mode        : selfcontained # {standalone, draft}
+knit        : slidify::knit2slides
+--- 
+<style>
+.title-slide {
+  background-color: #FFFFFF; /* #EDE0CF; ; #CA9F9D*/
+}
+em {
+  font-style: italic
+}
+
+</style>
+
+## ARDA Dataset
+
+- World Religion Dataset (WRD) characterizes religion by country since 1945
+- Data in five year increments
+- Sources included census data and specific estimates (Some imputed)
+- [Shinyapp](https://edettman.shinyapps.io/project) looks at the total fractions for each major religion by country and illustrates overall distributions of religions and trends in growth
+- https://edettman.shinyapps.io/project
+
+```{r, echo = F, message = F, warning = F}
+
+library(googleVis)
+require(reshape2)
+require(ggplot2)
+require(stringr)
+setwd('c:/religion')
+
+# Load in the information for each column in the dataset
+# then clean the data to make it easier to look at
+# extract the width of the columns in the ascii fixed width files to read it in
+# then turn into a dataframe with variable names
+info <- readLines("World Religion Dataset - National Religion Dataset.COL")
+info <- info[-1]
+
+info <- gsub('\\d{1,2}\\) {1}', '', info)
+
+a <- str_extract(info, '^[:alpha:]+')
+b <- str_extract(gsub('^[[:alpha:]3]+: ', '', info, perl = T), '\\d{1,3}')
+c <- str_extract(gsub('^[[:alpha:]3]+: ', '', info, perl = T), '\\d{1,3}$')
+
+info <- data.frame(var = a, start = as.integer(b), end = as.integer(c))
+
+info$len <- info$end - info$start + 1
+
+# read in the ascii fwf with the widths from the info file
+# some of the columns do not match the specification, had to use fill = T 
+relig <- read.fwf("World Religion Dataset - National Religion Dataset.DAT", widths = info$len, fill = T)
+
+names(relig) <- info$var
+
+## Turn the values that were brought in with commas to remove them
+## Then can change into numeric
+for(i in c(1, 7:84)){
+    relig[,i] <- as.numeric(gsub(',', '', as.character(relig[,i])))
+}
+
+## Bring in the variable descriptions
+desc <- readLines('World Religion Dataset - National Religion Dataset cb_descr.TXT')
+desc <- data.frame(matrix(desc, ncol = 2, byrow = T))
+desc <- desc[seq(2,174, by = 2), ]
+colnames(desc) <- c('Var', 'Descrip')
+rownames(desc) <- 1:nrow(desc)
+desc[,1] <- gsub('\\d{1,2}) ', '', desc[,1])
+
+# indices of the total numbers along with the countries
+# create new dataframes for easier plotting of the total numbers of adherents
+# by year
+idx <- c(1:6, which(grepl('Total number', desc[,2])), 43 )
+desc2 <- desc[idx,]
+relig2 <- relig[,idx]
+
+totals <- sapply(7:23, function(x) tapply(relig2[,x], relig2$YEAR, sum, na.rm = T) )
+
+totals <- data.frame(totals)
+names(totals) <- names(relig2)[7:23]
+
+# Also calculate fractions
+fractions <- totals[,1:16]/totals[,17]
+
+totals$YEAR <- rownames(totals)
+
+neat <- melt(data = totals, id.vars = 'YEAR')
+neat$variable <- str_extract(desc[,2][match((neat$variable), desc[,1])], pattern = "^[[:alpha:]\\'-]+")
+
+desc[c(1,6, 12, 17, 25, 29, 30, 31),2]
+
+```
+
+--- .class #id 
+
+## Growth of Religious Populations Since 1945  
+
+```{r, echo = F, fig.height = 5.5, fig.width = 12}
+
+qplot(x = YEAR, y = value, group = factor(variable), 
+      data = neat[neat$variable != 'Total',], colour = factor(variable), geom = 'line', size = I(1.5)) +
+      annotate('text', x = factor(c(1975, 2002, 2002)),
+               y = c(1.5e9, 1.5e9, 1.0e9), 
+               label = c('Christianity', 'Islam', 'Hindu')) +
+      ylab('Population') + ggtitle('Growth of Populations of Religions')  
+
+```
+
+- Above line graph shows the overall populations of each indicated religion since 1945 
+- ARDA dataset shows these populations at the level of the individual country 
+- This [Shinyapp](https://edettman.shinyapps.io/project) can be used to investigate these trends at a more granular level
+
+---
+## World Geographic Plot of Individual Religions  
+#### Christianity in 2010
+```{r, echo = F, results = 'asis', message = F}
+
+# now just isolate the fractions for each country by year
+# indices of the total fractions along with the countries
+idx <- c(1:6, which(grepl('Total percentage', desc[,2])) )
+
+desc <- desc[idx,]
+relig <- relig[,idx]
+
+# choices for religion
+a <- str_extract(desc[7:nrow(desc),2], '^[^:]+')
+
+# choices for year are 1945 to 2010 in 5 year increments
+# choice1 and choice2 are used as user inputs in the shiny app
+choice1 = "Christianity"
+choice2 = 2010
+idx <- which(a == choice1) + 6
+partRelig <- relig[relig$YEAR == choice2, c(6,idx)]
+names(partRelig) <- c('Country', 'Freq')
+G <- gvisGeoChart(partRelig,"Country", "Freq",
+                  options = list(title = 'Christianity in 2010', 
+                                 colorAxis = "{colors: ['#00853f', 'black', '#e31b23']}",
+                                 datalessRegionColor = '#ffffff',
+                                 height = 300, width = 600))
+print(G, 'chart')
+
+```
+- On the [Shinyapp](https://edettman.shinyapps.io/project), the user can select an individual religion and year
+- A heatmap of the fraction of people adhering to that relgion by year is then displayed in the *Map* tab
+- Green is low, black is middle, red is high, and white is missing data
+- Hover over individual countries to see the fraction of that religion
+
+---
+## Trends in Individual Countries
+
+```{r, echo = F, fig.height = 4, fig.width = 8, fig.align='center'}
+# Build a graphing function to show this for specific countries
+temp <- melt(relig[,c(1,6:22)], id.vars = c('YEAR', 'COUNTRY'))
+temp$variable <- str_extract(desc[,2][match(temp$variable, desc[,1])], pattern = "^[[:alpha:]\\'-]+") 
+temp$COUNTRY <- gsub('^[ ]+', '', temp$COUNTRY)
+
+
+pick = 'China'
+choice2 = 'Syncretic'
+
+qplot(x = YEAR, y = value,  fill = I('firebrick1'),
+      data = temp[temp$COUNTRY == pick & temp$variable == choice2,], 
+      geom = 'bar', stat= 'identity') +
+      ylab('Fraction') + ggtitle(paste('Growth of', choice2, 'Religion in', pick)) 
+
+```
+
+- On the [Shinyapp](https://edettman.shinyapps.io/project), the user can also select an individual country
+- _Growth_ tab will show the trends in the selected relgion in that country between 1945 and 2010
+- A third _Table_ tab shows a sortable and searchable table of all countries in the selected year for the selected religion
